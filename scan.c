@@ -1,5 +1,4 @@
 /*bug included !! */
-
 #include <ctype.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -65,22 +64,23 @@
 #define KEYWORDSIZE    28
 
 
-extern int num_attr;
-extern char string_attr[MAXSTRSIZE];
+int num_attr;
+char string_attr[MAXSTRSIZE];
 
-extern int get_linenum(void);
 
-extern void end_scan(void);
+void end_scan(void);
 
-extern struct KEY {
+struct KEY {
     char *keyword;
     int keytoken;
 } key[KEYWORDSIZE];
-extern FILE *mmpl;
-extern void error(char *mes);
-extern int init_scan(char *filename) {
+FILE *mmpl;
+
+void error(char *mes);
+
+int init_scan(char *filename) {
     if ((mmpl = fopen(filename, "r")) == NULL) {
-        fprintf(stderr, "e");
+        fprintf(stderr, "file open error");
         return -1;
     } else {
         return 0;
@@ -88,8 +88,13 @@ extern int init_scan(char *filename) {
 }
 
 
-extern char buff[30];
-extern int linenum;
+char buff[1025];
+int linenum;
+
+int get_linenum(void) {
+    return linenum;
+}
+
 char *tokens[NUMOFTOKEN + 1] = {
         "",
         "NAME", "program", "var", "array", "of", "begin", "end", "if", "then",
@@ -99,13 +104,23 @@ char *tokens[NUMOFTOKEN + 1] = {
         ">=", "(", ")", "[", "]", ":=", ".", ",", ":", ";", "read", "write", "break"
 };
 
-extern int isalphaordigit(int c) {
+int isalphaordigit(int c) {
     return isalpha(c) || isdigit(c);
 }
 
-extern int scan(void) {
-    char c;
+extern  int numtoken[NUMOFTOKEN+1];
+void end_scan(void){
+    int i;
+    for(i=0;i<50;i++){
+        if(numtoken[i]!=0){
+            printf("%s    %d\n",tokens[i],numtoken[i]);
+        }
+    }
+}
 
+
+int scan(void) {
+    char c;
     int i = 0;
     while ((c = fgetc(mmpl)) != EOF) {
         if (c == '\n') {
@@ -167,11 +182,19 @@ extern int scan(void) {
             return TSTAR;
         } else if (isalpha(c)) {
             int f = 0;
-            /*alphabet*/
+            int x;
+            for(x=0; x<1024;x++){
+                buff[x]='\0';
+            }
+            /*keywordsorname*/
             buff[i++] = c;
             while ((c = fgetc(mmpl)) != EOF) {
                 if (isalphaordigit(c)) {
                     buff[i++] = c;
+                    if(i>1025){
+                        fprintf(stderr,"too long string");
+                        return -1;
+                    }
                 } else {
                     ungetc(c, mmpl);
                     f = 1;
@@ -186,21 +209,26 @@ extern int scan(void) {
             }
         } else if (isdigit(c)) {
             /*digit*/
-            buff[i++] = c;
+            num_attr = c;
             while ((c = fgetc(mmpl)) != EOF) {
                 if (isdigit(c)) {
-                    buff[i++] = c;
+                    num_attr *= 10;
+                    num_attr += c;
+                    if(num_attr>32767){
+                        fprintf(stderr,"too big");
+                        return -1;
+                    }
                 } else if (isalpha(c)) {
                     fprintf(stderr, "error detected");
                     return -1;
                 } else {
                     ungetc(c, mmpl);
-                    return 1;
+                    return TNUMBER;
                 }
             }
             if (c == EOF) {
                 ungetc(c, mmpl);
-                return 1;
+                return TNUMBER;
             }
         } else if (c == '{') {
             /*comment case{}  */
@@ -215,7 +243,6 @@ extern int scan(void) {
                 fprintf(stderr, "error: comment not ended");
                 return -1;
             }
-
         } else if (c == '/') {
             if ((c = fgetc(mmpl)) != EOF) {
                 if (c == '*') {
@@ -244,12 +271,45 @@ extern int scan(void) {
                     return -1;
                 }
             }
+        }else if(c=='\''){
+            int f = 0;
+            /*string*/
+            int x;
+            for(x=0; x<1024;x++){
+                string_attr[x]='\0';
+            }
+
+            while ((c = fgetc(mmpl)) != EOF) {
+                if (c=='\'') {
+                    return TSTRING;
+                }else if(c=='\n') {
+                    fprintf(stderr," ' expected ");
+                    return -1;
+                }else{
+                    string_attr[i++] = c;
+                    if(i>1025){
+                        fprintf(stderr,"too long string");
+                        return -1;
+                    }
+                }
+            }
+            if (c == EOF) {
+                ungetc(c, mmpl);
+                return 1;
+            }
         }
     }
-    int j=0;
-    for(j=2;j<50;j++){
-        if(strcmp(tokens[j],buff)){
+    if(c == EOF){
+        return -1;
+    }
+    int j = 0;
+    for (j = 2; j < 50; j++) {
+        if (strcmp(tokens[j], buff)==0) {
             return j;
         }
     }
+    if(j==50){
+        return TNAME;
+    }
+    return -1;
 }
